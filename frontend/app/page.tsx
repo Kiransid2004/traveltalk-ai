@@ -189,10 +189,8 @@ export default function Home() {
               )}
               <button
                 id="mic-button"
-                onMouseDown={start}
-                onMouseUp={stop}
-                onTouchStart={(e) => { e.preventDefault(); start(); }}
-                onTouchEnd={(e) => { e.preventDefault(); stop(); }}
+                onPointerDown={start}
+                onPointerUp={stop}
                 disabled={isProcessing}
                 style={{
                   width: "90px",
@@ -210,6 +208,7 @@ export default function Home() {
                     : "0 0 30px rgba(139,92,246,0.3)",
                   transform: isRecording ? "scale(1.1)" : "scale(1)",
                   opacity: isProcessing ? 0.5 : 1,
+                  touchAction: "none",       // prevent browser scroll/zoom hijacking pointer events
                 }}
               >
                 {isRecording ? "🔴" : "🎤"}
