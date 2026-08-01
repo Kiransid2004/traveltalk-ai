@@ -1,3 +1,13 @@
+---
+title: TravelTalk AI Backend
+emoji: 🌍
+colorFrom: purple
+colorTo: cyan
+sdk: docker
+pinned: false
+app_port: 7860
+---
+
 # TravelTalk AI 🌍
 
 AI-powered travel translator for Indian languages.
