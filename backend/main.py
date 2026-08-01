@@ -6,8 +6,7 @@ app = FastAPI(title="TravelTalk AI", version="1.0.0")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # restrict to your Cloudflare domain in production
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
