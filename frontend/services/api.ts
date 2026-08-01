@@ -5,6 +5,10 @@ export interface TranslateResponse {
   audio_base64: string;
 }
 
+export interface SpeakResponse {
+  audio_base64: string;
+}
+
 // Uses Next.js proxy rewrite: /api/* → backend:8000/api/*
 const API_BASE = "/api";
 
@@ -44,6 +48,26 @@ export async function translateAudio(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "Translation failed");
+  }
+  return res.json();
+}
+
+export async function speakText(
+  text: string,
+  language: string
+): Promise<SpeakResponse> {
+  const form = new FormData();
+  form.append("text", text);
+  form.append("language", language);
+
+  const res = await fetch(`${API_BASE}/speak`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "TTS failed");
   }
   return res.json();
 }

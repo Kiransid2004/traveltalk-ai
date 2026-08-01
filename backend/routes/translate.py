@@ -2,10 +2,22 @@ import asyncio
 from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
-from models.schemas import TranslateResponse
+from models.schemas import TranslateResponse, SpeakResponse
 from services import speech, translation, tts
 
 router = APIRouter()
+
+
+@router.post("/speak")
+async def speak_endpoint(
+    text: str = Form(...),
+    language: str = Form(...),
+):
+    """TTS-only: read aloud the given text in the given language."""
+    if not text.strip():
+        raise HTTPException(status_code=400, detail="Text is empty")
+    audio_b64 = await tts.synthesize(text.strip(), language)
+    return SpeakResponse(audio_base64=audio_b64)
 
 
 @router.post("/translate", response_model=TranslateResponse)

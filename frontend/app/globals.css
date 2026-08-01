@@ -72,3 +72,16 @@ body {
 ::-webkit-scrollbar { width: 6px; }
 ::-webkit-scrollbar-track { background: var(--bg); }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Button press feedback on mobile */
+button:active {
+  transform: scale(0.95) !important;
+  opacity: 0.85 !important;
+}
+
+/* Prevent long-press context menu on buttons */
+button {
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
