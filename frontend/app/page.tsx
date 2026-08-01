@@ -2,7 +2,7 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { translateAudio, speakText, TranslateResponse } from "@/services/api";
@@ -47,6 +47,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
 
   const { play } = useAudioPlayer();
+  const isTouching = useRef(false);
 
   const handleResult = useCallback((res: TranslateResponse) => {
     setResult(res);
@@ -192,8 +193,12 @@ export default function Home() {
               )}
               <button
                 id="mic-button"
-                onPointerDown={start}
-                onPointerUp={stop}
+                onTouchStart={(e) => { e.preventDefault(); isTouching.current = true; start(); }}
+                onTouchEnd={(e) => { e.preventDefault(); stop(); }}
+                onTouchCancel={(e) => { e.preventDefault(); stop(); }}
+                onMouseDown={() => { if (!isTouching.current) start(); }}
+                onMouseUp={() => { if (!isTouching.current) stop(); }}
+                onMouseLeave={() => { if (!isTouching.current && isRecording) stop(); }}
                 disabled={isProcessing}
                 style={{
                   ...btnBase,
