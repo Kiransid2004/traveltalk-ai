@@ -77,14 +77,13 @@ export default function Home() {
   const handleSpeak = async () => {
     if (!inputText.trim()) return;
     setLoading(true);
+    setResult(null);
     setError(null);
     try {
-      const res = await speakText(inputText.trim(), speakLang);
-      play(res.audio_base64);
+      const res = await translateText(inputText.trim(), speakLang);
+      handleResult(res);
     } catch (e) {
       handleError(e);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -315,8 +314,8 @@ export default function Home() {
           </div>
         )}
 
-        {/* Voice Result */}
-        {result && mode === "voice" && (
+        {/* Result */}
+        {result && (
           <div
             className="animate-fade-in"
             style={{
