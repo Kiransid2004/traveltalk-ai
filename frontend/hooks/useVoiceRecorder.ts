@@ -1,22 +1,35 @@
 "use client";
-import { useRef, useState, useCallback } from "react";
+import { useRef, useState, useCallback, useEffect } from "react";
 
 export type RecorderState = "idle" | "recording" | "processing";
 
 export function useVoiceRecorder(onRecorded: (blob: Blob) => void) {
   const [state, setState] = useState<RecorderState>("idle");
   const mediaRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null); // cached — never re-request
   const chunksRef = useRef<Blob[]>([]);
 
-  const start = useCallback(async () => {
-    let stream: MediaStream;
+  // Call once when entering voice mode — asks permission proactively
+  const init = useCallback(async () => {
+    if (streamRef.current) return; // already have it
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      // Permission denied or hardware error — stay in idle state
-      return;
+      // Permission denied — stay idle
     }
-    const recorder = new MediaRecorder(stream);
+  }, []);
+
+  const start = useCallback(async () => {
+    // Reuse cached stream; only request if somehow lost
+    if (!streamRef.current) {
+      try {
+        streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
+      } catch {
+        return;
+      }
+    }
+
+    const recorder = new MediaRecorder(streamRef.current);
     chunksRef.current = [];
 
     recorder.ondataavailable = (e) => {
@@ -25,7 +38,6 @@ export function useVoiceRecorder(onRecorded: (blob: Blob) => void) {
 
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-      stream.getTracks().forEach((t) => t.stop());
       setState("processing");
       onRecorded(blob);
     };
@@ -41,5 +53,12 @@ export function useVoiceRecorder(onRecorded: (blob: Blob) => void) {
 
   const reset = useCallback(() => setState("idle"), []);
 
-  return { state, start, stop, reset };
+  // Release mic when component unmounts
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+    };
+  }, []);
+
+  return { state, start, stop, reset, init };
 }

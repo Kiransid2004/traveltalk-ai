@@ -39,7 +39,7 @@ export default function Home() {
     setLoading(false);
   }, []);
 
-  const { state: recState, start, stop, reset } = useVoiceRecorder(
+  const { state: recState, start, stop, reset, init } = useVoiceRecorder(
     async (blob) => {
       try {
         const res = await translateAudio(blob, targetLang);
@@ -120,7 +120,7 @@ export default function Home() {
             <button
               key={m}
               id={`mode-${m}`}
-              onClick={() => { setMode(m); setResult(null); setError(null); }}
+              onClick={() => { setMode(m); setResult(null); setError(null); if (m === "voice") init(); }}
               style={{
                 flex: 1,
                 padding: "10px",
