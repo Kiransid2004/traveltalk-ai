@@ -8,25 +8,34 @@ export function useVoiceRecorder(onRecorded: (blob: Blob) => void) {
   const mediaRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null); // cached — never re-request
   const chunksRef = useRef<Blob[]>([]);
+  const isStartingRef = useRef(false);
 
   // Call once when entering voice mode — asks permission proactively
   const init = useCallback(async () => {
-    if (streamRef.current) return; // already have it
+    if (streamRef.current || isStartingRef.current) return;
+    isStartingRef.current = true;
     try {
       streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
       // Permission denied — stay idle
+    } finally {
+      isStartingRef.current = false;
     }
   }, []);
 
   const start = useCallback(async () => {
+    if (isStartingRef.current) return;
+    
     // Reuse cached stream; only request if somehow lost
     if (!streamRef.current) {
+      isStartingRef.current = true;
       try {
         streamRef.current = await navigator.mediaDevices.getUserMedia({ audio: true });
       } catch {
+        isStartingRef.current = false;
         return;
       }
+      isStartingRef.current = false;
     }
 
     const recorder = new MediaRecorder(streamRef.current);
