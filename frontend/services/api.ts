@@ -9,8 +9,10 @@ export interface SpeakResponse {
   audio_base64: string;
 }
 
-// Uses Next.js proxy rewrite: /api/* → backend:8000/api/*
-const API_BASE = "/api";
+// Bypass Vercel's 10-second timeout limit by calling the backend directly from the browser!
+const API_BASE = process.env.NODE_ENV === "development" 
+  ? "http://localhost:8000/api" 
+  : "https://traveltalk-ai.onrender.com/api";
 
 export async function translateText(
   text: string,
