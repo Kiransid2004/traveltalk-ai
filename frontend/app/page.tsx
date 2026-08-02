@@ -40,7 +40,10 @@ const btnBase: React.CSSProperties = {
   border: "none",
   cursor: "pointer",
   fontFamily: "inherit",
-  WebkitTapHighlightColor: "rgba(139,92,246,0.3)",
+  WebkitTapHighlightColor: "transparent",
+  userSelect: "none",
+  WebkitUserSelect: "none",
+  WebkitTouchCallout: "none",
   transition: "all 0.15s",
 };
 
