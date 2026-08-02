@@ -258,13 +258,15 @@ export default function Home() {
                 <div className="animate-pulse-ring" style={{ position: "absolute", width: "90px", height: "90px", borderRadius: "50%", border: "2px solid var(--accent)" }} />
               )}
               <button
-                onClick={() => {
+                onClick={(e) => {
+                  e.preventDefault();
                   if (isRecording) {
                     stop();
                   } else if (!isProcessing) {
                     start();
                   }
                 }}
+                onContextMenu={(e) => e.preventDefault()}
                 disabled={isProcessing && !isRecording}
                 style={{
                   ...btnBase,
@@ -279,9 +281,12 @@ export default function Home() {
                   justifyContent: "center",
                   boxShadow: isRecording ? "0 4px 16px rgba(239,68,68,0.4)" : "0 4px 16px rgba(139,92,246,0.3)",
                   zIndex: 2,
+                  touchAction: "manipulation",
                 }}
               >
-                {isRecording ? "⏹" : "🎤"}
+                <span style={{ pointerEvents: "none", userSelect: "none" }}>
+                  {isRecording ? "⏹" : "🎤"}
+                </span>
               </button>
             </div>
             <div style={{ fontSize: "0.85rem", color: "var(--text)", fontWeight: 500, marginTop: "16px" }}>
