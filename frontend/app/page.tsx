@@ -2,13 +2,21 @@
 
 export const dynamic = "force-dynamic";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { translateText, translateAudio, TranslateResponse } from "@/services/api";
 
-type Mode = "voice" | "text";
+type Mode = "menu" | "voice" | "text";
 type Lang = "ta" | "en";
+
+type Message = {
+  id: string;
+  sender: "ME" | "Robot";
+  text: string;
+  audioBase64?: string;
+  isProcessing?: boolean;
+};
 
 const LANG_LABELS: Record<Lang, string> = { ta: "Tamil", en: "English" };
 const LANG_DISPLAY: Record<string, string> = {
@@ -17,8 +25,7 @@ const LANG_DISPLAY: Record<string, string> = {
   gu: "Gujarati", pa: "Punjabi",
 };
 
-// Languages available for Read Aloud (text mode)
-const SPEAK_LANGS: { code: string; label: string }[] = [
+const SPEAK_LANGS = [
   { code: "en", label: "English" },
   { code: "ta", label: "Tamil" },
   { code: "hi", label: "Hindi" },
@@ -38,52 +45,79 @@ const btnBase: React.CSSProperties = {
 };
 
 export default function Home() {
-  const [mode, setMode] = useState<Mode>("voice");
+  const [mode, setMode] = useState<Mode>("menu");
   const [targetLang, setTargetLang] = useState<Lang>("ta");
   const [speakLang, setSpeakLang] = useState("en");
   const [inputText, setInputText] = useState("");
-  const [result, setResult] = useState<TranslateResponse | null>(null);
+  const [chatHistory, setChatHistory] = useState<Message[]>([]);
+  const [textResult, setTextResult] = useState<TranslateResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const chatEndRef = useRef<HTMLDivElement>(null);
 
   const { play } = useAudioPlayer();
-  const isTouching = useRef(false);
 
-  const handleResult = useCallback((res: TranslateResponse) => {
-    setResult(res);
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [chatHistory]);
+
+  const initVoiceChat = useCallback(() => {
+    setMode("voice");
+    setChatHistory([
+      { id: "greeting", sender: "Robot", text: `Hello! Tap the microphone and say something. I will translate it to ${LANG_LABELS[targetLang]}.` }
+    ]);
     setError(null);
-    setLoading(false);
-    play(res.audio_base64);
-  }, [play]);
+  }, [targetLang]);
 
-  const handleError = useCallback((e: unknown) => {
-    setError(e instanceof Error ? e.message : "Something went wrong");
-    setLoading(false);
-  }, []);
+  useEffect(() => {
+    if (mode === "voice" && chatHistory.length <= 1) {
+       setChatHistory([
+        { id: "greeting", sender: "Robot", text: `Hello! Tap the microphone and say something. I will translate it to ${LANG_LABELS[targetLang]}.` }
+      ]);
+    }
+  }, [targetLang, mode]);
 
   const { state: recState, start, stop, reset, init } = useVoiceRecorder(
     async (blob) => {
+      const processingId = Date.now().toString();
+      setChatHistory(prev => [...prev, { id: processingId, sender: "ME", text: "🎙️ Processing...", isProcessing: true }]);
+      
       try {
         const res = await translateAudio(blob, targetLang);
-        handleResult(res);
+        setChatHistory(prev => prev.map(msg => 
+          msg.id === processingId ? { ...msg, text: res.transcription || "🗣️ (Voice)", isProcessing: false } : msg
+        ));
+        
+        setChatHistory(prev => [...prev, {
+          id: Date.now().toString() + "-bot",
+          sender: "Robot",
+          text: res.translation,
+          audioBase64: res.audio_base64
+        }]);
+        
+        play(res.audio_base64);
         reset();
       } catch (e) {
-        handleError(e);
+        setChatHistory(prev => prev.filter(msg => msg.id !== processingId));
+        setError(e instanceof Error ? e.message : "Something went wrong");
         reset();
       }
     }
   );
 
-  const handleSpeak = async () => {
+  const handleSpeakText = async () => {
     if (!inputText.trim()) return;
     setLoading(true);
-    setResult(null);
+    setTextResult(null);
     setError(null);
     try {
       const res = await translateText(inputText.trim(), speakLang);
-      handleResult(res);
+      setTextResult(res);
+      play(res.audio_base64);
     } catch (e) {
-      handleError(e);
+      setError(e instanceof Error ? e.message : "Something went wrong");
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -99,276 +133,244 @@ export default function Home() {
         alignItems: "center",
         justifyContent: "center",
         padding: "24px 16px",
-        background:
-          "radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.12) 0%, transparent 60%), var(--bg)",
+        background: "radial-gradient(ellipse at 50% 0%, rgba(139,92,246,0.12) 0%, transparent 60%), var(--bg)",
       }}
     >
-      {/* Header */}
-      <div style={{ textAlign: "center", marginBottom: "32px" }}>
-        <div className="animate-float" style={{ fontSize: "2.5rem", marginBottom: "8px" }}>🌍</div>
-        <h1 className="gradient-text" style={{ fontSize: "1.75rem", fontWeight: 700, letterSpacing: "-0.5px" }}>
-          TravelTalk AI
-        </h1>
-        <p style={{ color: "var(--muted)", fontSize: "0.85rem", marginTop: "4px" }}>
-          Speak. Translate. Understand.
-        </p>
-      </div>
-
-      {/* Card */}
-      <div className="glass" style={{ width: "100%", maxWidth: "420px", padding: "28px 24px" }}>
-
-        {/* Mode Toggle */}
-        <div style={{ display: "flex", gap: "8px", background: "var(--surface2)", borderRadius: "14px", padding: "4px", marginBottom: "24px" }}>
-          {(["voice", "text"] as Mode[]).map((m) => (
+      {/* ─── MENU MODE ─── */}
+      {mode === "menu" && (
+        <div className="animate-fade-in" style={{ textAlign: "center", width: "100%", maxWidth: "420px" }}>
+          <div className="animate-float" style={{ fontSize: "3.5rem", marginBottom: "16px" }}>🌍</div>
+          <h1 className="gradient-text" style={{ fontSize: "2.2rem", fontWeight: 700, letterSpacing: "-0.5px", marginBottom: "8px" }}>
+            TravelTalk AI
+          </h1>
+          <p style={{ color: "var(--muted)", fontSize: "1rem", marginBottom: "48px" }}>
+            Speak. Translate. Understand.
+          </p>
+          
+          <div style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
             <button
-              key={m}
-              id={`mode-${m}`}
-              onClick={() => {
-                setMode(m);
-                setResult(null);
-                setError(null);
-                if (m === "voice") init();
-              }}
-              style={{
-                ...btnBase,
-                flex: 1,
-                padding: "10px",
-                borderRadius: "10px",
-                fontWeight: 600,
-                fontSize: "0.9rem",
-                background: mode === m
-                  ? "linear-gradient(135deg, var(--accent), var(--accent2))"
-                  : "transparent",
-                color: mode === m ? "#fff" : "var(--muted)",
-                boxShadow: mode === m ? "0 2px 12px rgba(139,92,246,0.4)" : "none",
-              }}
+              onClick={() => { init(); initVoiceChat(); }}
+              className="glass"
+              style={{ ...btnBase, padding: "24px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "16px", background: "linear-gradient(135deg, rgba(139,92,246,0.1), rgba(139,92,246,0.05))", border: "1px solid rgba(139,92,246,0.2)" }}
             >
-              {m === "voice" ? "🎤 Voice" : "💬 Read Aloud"}
+              <div style={{ fontSize: "2.5rem" }}>🎤</div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "1.3rem", fontWeight: 600, color: "var(--text)" }}>Voice Chat</div>
+                <div style={{ fontSize: "0.9rem", color: "var(--muted)", marginTop: "4px" }}>Talk to the AI for instant translation</div>
+              </div>
             </button>
-          ))}
+            
+            <button
+              onClick={() => { setMode("text"); setTextResult(null); setError(null); }}
+              className="glass"
+              style={{ ...btnBase, padding: "24px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "16px", border: "1px solid var(--border)" }}
+            >
+              <div style={{ fontSize: "2.5rem" }}>💬</div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "1.3rem", fontWeight: 600, color: "var(--text)" }}>Read Aloud</div>
+                <div style={{ fontSize: "0.9rem", color: "var(--muted)", marginTop: "4px" }}>Type text to be spoken in another language</div>
+              </div>
+            </button>
+          </div>
         </div>
+      )}
 
-        {/* Voice Mode — Target Language */}
-        {mode === "voice" && (
-          <div style={{ marginBottom: "24px" }}>
-            <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "8px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-              Translate to
-            </p>
-            <div style={{ display: "flex", gap: "8px" }}>
+      {/* ─── SHARED HEADER FOR VOICE/TEXT MODES ─── */}
+      {mode !== "menu" && (
+        <div className="animate-fade-in" style={{ width: "100%", maxWidth: "420px", display: "flex", alignItems: "center", marginBottom: "16px" }}>
+          <button
+            onClick={() => setMode("menu")}
+            style={{ ...btnBase, background: "transparent", color: "var(--muted)", display: "flex", alignItems: "center", gap: "4px", padding: "8px", fontWeight: 500 }}
+          >
+            ← Exit to Menu
+          </button>
+          <div style={{ flex: 1 }} />
+          {mode === "voice" && (
+            <div style={{ display: "flex", gap: "4px", background: "var(--surface)", padding: "4px", borderRadius: "20px" }}>
               {(["ta", "en"] as Lang[]).map((l) => (
                 <button
                   key={l}
-                  id={`lang-${l}`}
                   onClick={() => setTargetLang(l)}
                   style={{
                     ...btnBase,
-                    flex: 1,
-                    padding: "10px",
-                    borderRadius: "10px",
-                    border: `1px solid ${targetLang === l ? "var(--accent)" : "var(--border)"}`,
+                    padding: "4px 12px",
+                    borderRadius: "16px",
+                    fontSize: "0.8rem",
                     fontWeight: 600,
-                    fontSize: "0.9rem",
-                    background: targetLang === l ? "rgba(139,92,246,0.2)" : "transparent",
-                    color: targetLang === l ? "var(--accent)" : "var(--muted)",
-                    boxShadow: targetLang === l ? "0 0 0 1px var(--accent)" : "none",
+                    background: targetLang === l ? "var(--accent)" : "transparent",
+                    color: targetLang === l ? "#fff" : "var(--muted)",
+                    border: "none"
                   }}
                 >
                   {LANG_LABELS[l]}
                 </button>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* Voice Mode — Mic */}
-        {mode === "voice" && (
-          <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "16px" }}>
-            <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center" }}>
+      {/* ─── VOICE CHAT MODE ─── */}
+      {mode === "voice" && (
+        <div className="glass animate-fade-in" style={{ width: "100%", maxWidth: "420px", height: "70vh", display: "flex", flexDirection: "column", borderRadius: "24px", overflow: "hidden", position: "relative" }}>
+          {/* Chat History Area */}
+          <div style={{ flex: 1, overflowY: "auto", padding: "20px", display: "flex", flexDirection: "column", gap: "20px" }}>
+            {chatHistory.map((msg) => (
+              <div key={msg.id} style={{ display: "flex", flexDirection: "column", alignItems: msg.sender === "ME" ? "flex-end" : "flex-start" }}>
+                <span style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "6px", marginLeft: "8px", marginRight: "8px", fontWeight: 600 }}>
+                  {msg.sender === "ME" ? "ME 🗣️" : "🤖 Robot"}
+                </span>
+                <div style={{
+                  maxWidth: "85%",
+                  padding: "12px 16px",
+                  borderRadius: msg.sender === "ME" ? "20px 20px 4px 20px" : "20px 20px 20px 4px",
+                  background: msg.sender === "ME" ? "linear-gradient(135deg, var(--accent), var(--accent2))" : "var(--surface2)",
+                  color: msg.sender === "ME" ? "#fff" : "var(--text)",
+                  fontSize: "1rem",
+                  lineHeight: 1.5,
+                  boxShadow: "0 2px 8px rgba(0,0,0,0.05)",
+                  opacity: msg.isProcessing ? 0.7 : 1
+                }}>
+                  {msg.text}
+                  {msg.audioBase64 && (
+                    <button
+                      onClick={() => play(msg.audioBase64!)}
+                      style={{ ...btnBase, display: "flex", alignItems: "center", gap: "6px", marginTop: "12px", background: "rgba(0,0,0,0.2)", borderRadius: "20px", padding: "6px 12px", color: "inherit", fontSize: "0.85rem", fontWeight: 500 }}
+                    >
+                      ▶ Replay Voice
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+            <div ref={chatEndRef} />
+          </div>
+
+          {/* Chat Input Area */}
+          <div style={{ padding: "20px", background: "var(--surface)", borderTop: "1px solid var(--border)", display: "flex", justifyContent: "center", alignItems: "center", flexDirection: "column" }}>
+            {error && <div style={{ color: "var(--error)", fontSize: "0.85rem", marginBottom: "12px" }}>{error}</div>}
+            
+            <div style={{ position: "relative", display: "flex", justifyContent: "center", alignItems: "center" }}>
               {isRecording && (
-                <div
-                  className="animate-pulse-ring"
-                  style={{ position: "absolute", width: "100px", height: "100px", borderRadius: "50%", border: "2px solid var(--accent)" }}
-                />
+                <div className="animate-pulse-ring" style={{ position: "absolute", width: "90px", height: "90px", borderRadius: "50%", border: "2px solid var(--accent)" }} />
               )}
               <button
-                id="mic-button"
-                onTouchStart={(e) => { e.preventDefault(); isTouching.current = true; start(); }}
-                onTouchEnd={(e) => { e.preventDefault(); stop(); }}
-                onTouchCancel={(e) => { e.preventDefault(); stop(); }}
-                onMouseDown={() => { if (!isTouching.current) start(); }}
-                onMouseUp={() => { if (!isTouching.current) stop(); }}
-                onMouseLeave={() => { if (!isTouching.current && isRecording) stop(); }}
-                disabled={isProcessing}
+                onClick={() => {
+                  if (isRecording) {
+                    stop();
+                  } else if (!isProcessing) {
+                    start();
+                  }
+                }}
+                disabled={isProcessing && !isRecording}
                 style={{
                   ...btnBase,
-                  width: "90px",
-                  height: "90px",
+                  width: "70px",
+                  height: "70px",
                   borderRadius: "50%",
-                  fontSize: "2rem",
-                  background: isRecording
-                    ? "linear-gradient(135deg, #ef4444, #dc2626)"
-                    : "linear-gradient(135deg, var(--accent), var(--accent2))",
-                  boxShadow: isRecording
-                    ? "0 0 30px rgba(239,68,68,0.5)"
-                    : "0 0 30px rgba(139,92,246,0.4)",
-                  transform: isRecording ? "scale(1.12)" : "scale(1)",
-                  opacity: isProcessing ? 0.5 : 1,
-                  cursor: isProcessing ? "not-allowed" : "pointer",
-                  touchAction: "none",
-                  userSelect: "none",
+                  background: isRecording ? "var(--error)" : isProcessing ? "var(--surface2)" : "linear-gradient(135deg, var(--accent), var(--accent2))",
+                  color: "#fff",
+                  fontSize: "1.8rem",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  boxShadow: isRecording ? "0 4px 16px rgba(239,68,68,0.4)" : "0 4px 16px rgba(139,92,246,0.3)",
+                  zIndex: 2,
                 }}
               >
-                {isProcessing ? "⏳" : isRecording ? "🔴" : "🎤"}
+                {isRecording ? "⏹" : "🎤"}
               </button>
             </div>
-            <p style={{ color: "var(--muted)", fontSize: "0.85rem" }}>
-              {isProcessing ? "Processing…" : isRecording ? "Release to translate" : "Hold to speak"}
-            </p>
+            <div style={{ fontSize: "0.85rem", color: "var(--text)", fontWeight: 500, marginTop: "16px" }}>
+              {isRecording ? "Tap to SEND" : isProcessing ? "Translating..." : "Tap to RECORD"}
+            </div>
           </div>
-        )}
+        </div>
+      )}
 
-        {/* Text Mode — Read Aloud */}
-        {mode === "text" && (
+      {/* ─── TEXT MODE (READ ALOUD) ─── */}
+      {mode === "text" && (
+        <div className="glass animate-fade-in" style={{ width: "100%", maxWidth: "420px", padding: "28px 24px" }}>
           <div style={{ display: "flex", flexDirection: "column", gap: "12px" }}>
             <p style={{ fontSize: "0.75rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
               Language to read in
             </p>
-            {/* Language pills */}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "4px" }}>
-              {SPEAK_LANGS.map((l) => (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "8px", marginBottom: "12px" }}>
+              {SPEAK_LANGS.map((lang) => (
                 <button
-                  key={l.code}
-                  onClick={() => setSpeakLang(l.code)}
+                  key={lang.code}
+                  onClick={() => setSpeakLang(lang.code)}
                   style={{
                     ...btnBase,
-                    padding: "6px 14px",
+                    padding: "8px 14px",
                     borderRadius: "20px",
-                    fontSize: "0.8rem",
-                    fontWeight: 600,
-                    border: `1px solid ${speakLang === l.code ? "var(--accent)" : "var(--border)"}`,
-                    background: speakLang === l.code ? "rgba(139,92,246,0.2)" : "transparent",
-                    color: speakLang === l.code ? "var(--accent)" : "var(--muted)",
-                    boxShadow: speakLang === l.code ? "0 0 0 1px var(--accent)" : "none",
+                    border: `1px solid ${speakLang === lang.code ? "var(--accent)" : "var(--border)"}`,
+                    background: speakLang === lang.code ? "rgba(139,92,246,0.15)" : "transparent",
+                    color: speakLang === lang.code ? "var(--accent)" : "var(--muted)",
+                    fontSize: "0.85rem",
+                    fontWeight: 500,
                   }}
                 >
-                  {l.label}
+                  {lang.label}
                 </button>
               ))}
             </div>
 
             <textarea
-              id="text-input"
+              placeholder="Type something to read aloud..."
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder={`Type what you want to say in ${SPEAK_LANGS.find(l => l.code === speakLang)?.label ?? speakLang}…`}
-              rows={4}
               style={{
-                background: "var(--surface2)",
+                width: "100%",
+                height: "120px",
+                background: "var(--surface)",
                 border: "1px solid var(--border)",
                 borderRadius: "12px",
-                padding: "14px",
+                padding: "16px",
                 color: "var(--text)",
+                fontFamily: "inherit",
                 fontSize: "1rem",
                 resize: "none",
                 outline: "none",
-                fontFamily: "inherit",
+                boxShadow: "inset 0 2px 4px rgba(0,0,0,0.2)",
               }}
             />
-            <button
-              id="speak-button"
-              onClick={handleSpeak}
-              disabled={loading || !inputText.trim()}
-              style={{
-                ...btnBase,
-                padding: "14px",
-                borderRadius: "12px",
-                fontWeight: 700,
-                fontSize: "1rem",
-                background: "linear-gradient(135deg, var(--accent), var(--accent2))",
-                color: "#fff",
-                opacity: loading || !inputText.trim() ? 0.5 : 1,
-                cursor: loading || !inputText.trim() ? "not-allowed" : "pointer",
-                boxShadow: "0 4px 20px rgba(139,92,246,0.35)",
-              }}
-            >
-              {loading ? "Generating audio…" : "🔊 Read Aloud"}
-            </button>
           </div>
-        )}
 
-        {/* Error */}
-        {error && (
-          <div
-            className="animate-fade-in"
+          {error && <div style={{ color: "var(--error)", fontSize: "0.85rem", marginTop: "16px", textAlign: "center" }}>{error}</div>}
+
+          <button
+            onClick={handleSpeakText}
+            disabled={loading || !inputText.trim()}
             style={{
-              marginTop: "16px",
-              padding: "12px",
-              borderRadius: "10px",
-              background: "rgba(239,68,68,0.1)",
-              border: "1px solid rgba(239,68,68,0.3)",
-              color: "#ef4444",
-              fontSize: "0.85rem",
+              ...btnBase,
+              width: "100%",
+              padding: "14px",
+              borderRadius: "12px",
+              background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+              color: "#fff",
+              fontWeight: 600,
+              fontSize: "1rem",
+              marginTop: "24px",
+              opacity: (loading || !inputText.trim()) ? 0.6 : 1,
+              boxShadow: "0 4px 16px rgba(139,92,246,0.2)",
             }}
           >
-            ⚠️ {error}
-          </div>
-        )}
+            {loading ? "Processing..." : "🔊 Read Aloud"}
+          </button>
 
-        {/* Result */}
-        {result && (
-          <div
-            className="animate-fade-in"
-            style={{
-              marginTop: "20px",
-              padding: "16px",
-              borderRadius: "14px",
-              background: "var(--surface2)",
-              border: "1px solid var(--border)",
-              display: "flex",
-              flexDirection: "column",
-              gap: "10px",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-              <span style={{ fontSize: "0.7rem", color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.06em" }}>Detected</span>
-              <span style={{ fontSize: "0.75rem", fontWeight: 600, color: "var(--accent2)", background: "rgba(6,182,212,0.1)", padding: "2px 8px", borderRadius: "6px" }}>
-                {LANG_DISPLAY[result.source_language] ?? result.source_language.toUpperCase()}
-              </span>
-            </div>
-
-            {result.transcription && (
-              <p style={{ fontSize: "0.85rem", color: "var(--muted)", fontStyle: "italic" }}>
-                "{result.transcription}"
+          {textResult && (
+            <div className="animate-fade-in" style={{ marginTop: "24px", padding: "16px", background: "var(--surface2)", borderRadius: "12px", border: "1px solid var(--border)" }}>
+              <p style={{ fontSize: "0.75rem", color: "var(--accent)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Translation ({LANG_DISPLAY[speakLang]})
               </p>
-            )}
-
-            <p style={{ fontSize: "1.2rem", fontWeight: 600, lineHeight: 1.5, color: "var(--text)" }}>
-              {result.translation}
-            </p>
-
-            <div style={{ display: "flex", gap: "8px", marginTop: "4px" }}>
-              <button
-                id="play-button"
-                onClick={() => play(result.audio_base64)}
-                style={{ ...btnBase, flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: "0.85rem", fontWeight: 600 }}
-              >
-                🔊 Play
-              </button>
-              <button
-                id="copy-button"
-                onClick={() => navigator.clipboard.writeText(result.translation)}
-                style={{ ...btnBase, flex: 1, padding: "10px", borderRadius: "10px", border: "1px solid var(--border)", background: "transparent", color: "var(--text)", fontSize: "0.85rem", fontWeight: 600 }}
-              >
-                📋 Copy
-              </button>
+              <p style={{ color: "var(--text)", fontSize: "1.1rem", lineHeight: 1.4 }}>
+                {textResult.translation}
+              </p>
             </div>
-          </div>
-        )}
-      </div>
-
-      <p style={{ marginTop: "20px", color: "var(--muted)", fontSize: "0.75rem" }}>
-        Supports Hindi · Bengali · Telugu · Marathi · and 100+ more
-      </p>
+          )}
+        </div>
+      )}
     </main>
   );
 }
