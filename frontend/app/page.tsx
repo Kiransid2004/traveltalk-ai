@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 import { useState, useCallback, useRef } from "react";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { translateAudio, speakText, TranslateResponse } from "@/services/api";
+import { translateText, translateAudio, TranslateResponse } from "@/services/api";
 
 type Mode = "voice" | "text";
 type Lang = "ta" | "en";
