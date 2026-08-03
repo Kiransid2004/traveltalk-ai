@@ -3,7 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from models.schemas import TranslateResponse, SpeakResponse
-from services import speech, translation, tts
+from services import speech, translation, tts, ocr
 
 router = APIRouter()
 
@@ -65,3 +65,35 @@ async def translate_endpoint(
         translation=translated,
         audio_base64=audio_b64,
     )
+
+@router.post("/translate/image", response_model=TranslateResponse)
+async def translate_image_endpoint(
+    target_language: str = Form(...),
+    image: UploadFile = File(...),
+):
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(status_code=400, detail="Image file is empty")
+
+    try:
+        # Extract text using OCR
+        extracted_text = await asyncio.to_thread(ocr.extract_text, image_bytes)
+        if not extracted_text:
+            raise HTTPException(status_code=400, detail="No text detected in image")
+
+        # Translate extracted text
+        translated = await asyncio.to_thread(
+            translation.translate, extracted_text, target_language, "auto"
+        )
+        
+        # TTS for the translated text
+        audio_b64 = await tts.synthesize(translated, target_language)
+
+        return TranslateResponse(
+            source_language="auto",
+            extracted_text=extracted_text,
+            translation=translated,
+            audio_base64=audio_b64,
+        )
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc

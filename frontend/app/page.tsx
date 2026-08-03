@@ -5,9 +5,9 @@ export const dynamic = "force-dynamic";
 import { useState, useCallback, useRef, useEffect } from "react";
 import { useVoiceRecorder } from "@/hooks/useVoiceRecorder";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
-import { translateText, translateAudio, TranslateResponse } from "@/services/api";
+import { translateText, translateAudio, translateImage, TranslateResponse } from "@/services/api";
 
-type Mode = "menu" | "voice" | "text";
+type Mode = "menu" | "voice" | "text" | "image";
 type Lang = "ta" | "en";
 
 type Message = {
@@ -57,6 +57,31 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
+  const [imageResult, setImageResult] = useState<TranslateResponse | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImageFile(file);
+    setImagePreview(URL.createObjectURL(file));
+    setImageResult(null);
+    setError(null);
+    setLoading(true);
+
+    try {
+      const res = await translateImage(file, targetLang);
+      setImageResult(res);
+      play(res.audio_base64);
+    } catch (err: any) {
+      setError(err.message || "Failed to translate image");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const { play } = useAudioPlayer();
 
@@ -174,6 +199,18 @@ export default function Home() {
                 <div style={{ fontSize: "0.9rem", color: "var(--muted)", marginTop: "4px" }}>Type text to be spoken in another language</div>
               </div>
             </button>
+            
+            <button
+              onClick={() => { setMode("image"); setImageResult(null); setImagePreview(null); setImageFile(null); setError(null); }}
+              className="glass"
+              style={{ ...btnBase, padding: "24px", borderRadius: "20px", display: "flex", alignItems: "center", gap: "16px", border: "1px solid var(--border)" }}
+            >
+              <div style={{ fontSize: "2.5rem" }}>📷</div>
+              <div style={{ textAlign: "left" }}>
+                <div style={{ fontSize: "1.3rem", fontWeight: 600, color: "var(--text)" }}>Image Translation</div>
+                <div style={{ fontSize: "0.9rem", color: "var(--muted)", marginTop: "4px" }}>Upload a picture to translate text</div>
+              </div>
+            </button>
           </div>
         </div>
       )}
@@ -188,7 +225,7 @@ export default function Home() {
             ← Exit to Menu
           </button>
           <div style={{ flex: 1 }} />
-          {mode === "voice" && (
+          {(mode === "voice" || mode === "image") && (
             <div style={{ display: "flex", gap: "4px", background: "var(--surface)", padding: "4px", borderRadius: "20px" }}>
               {(["ta", "en"] as Lang[]).map((l) => (
                 <button
@@ -375,6 +412,75 @@ export default function Home() {
               <p style={{ color: "var(--text)", fontSize: "1.1rem", lineHeight: 1.4 }}>
                 {textResult.translation}
               </p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ─── IMAGE MODE ─── */}
+      {mode === "image" && (
+        <div className="glass animate-fade-in" style={{ width: "100%", maxWidth: "420px", padding: "28px 24px", display: "flex", flexDirection: "column", gap: "16px" }}>
+          
+          <input 
+            type="file" 
+            accept="image/*" 
+            ref={fileInputRef} 
+            onChange={handleImageUpload} 
+            style={{ display: "none" }} 
+          />
+          
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={loading}
+            style={{
+              ...btnBase,
+              width: "100%",
+              padding: "16px",
+              borderRadius: "16px",
+              background: "var(--surface2)",
+              border: "2px dashed var(--border)",
+              color: "var(--text)",
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              gap: "8px",
+              opacity: loading ? 0.6 : 1
+            }}
+          >
+            <div style={{ fontSize: "2rem" }}>📸</div>
+            <div style={{ fontWeight: 600 }}>{loading ? "Processing Image..." : "Tap to Select Image"}</div>
+          </button>
+
+          {error && <div style={{ color: "var(--error)", fontSize: "0.85rem", textAlign: "center" }}>{error}</div>}
+
+          {imagePreview && (
+            <div style={{ width: "100%", borderRadius: "12px", overflow: "hidden", border: "1px solid var(--border)", marginTop: "8px" }}>
+              <img src={imagePreview} alt="Preview" style={{ width: "100%", height: "auto", display: "block" }} />
+            </div>
+          )}
+
+          {imageResult && (
+            <div className="animate-fade-in" style={{ marginTop: "16px", padding: "16px", background: "linear-gradient(135deg, rgba(139,92,246,0.1), transparent)", borderRadius: "12px", border: "1px solid rgba(139,92,246,0.3)" }}>
+              {imageResult.extracted_text && (
+                <div style={{ marginBottom: "16px" }}>
+                  <p style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>Extracted Text</p>
+                  <p style={{ color: "var(--text)", fontSize: "1rem" }}>{imageResult.extracted_text}</p>
+                </div>
+              )}
+              
+              <div>
+                <p style={{ fontSize: "0.75rem", color: "var(--accent)", marginBottom: "4px", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                  Translation ({LANG_LABELS[targetLang]})
+                </p>
+                <p style={{ color: "var(--text)", fontSize: "1.1rem", fontWeight: 500 }}>{imageResult.translation}</p>
+              </div>
+              
+              <button 
+                onClick={() => play(imageResult.audio_base64)}
+                style={{ ...btnBase, background: "var(--surface)", color: "var(--text)", padding: "8px 16px", borderRadius: "20px", marginTop: "16px", fontSize: "0.9rem", display: "flex", alignItems: "center", gap: "8px", border: "1px solid var(--border)" }}
+              >
+                🔊 Play Audio
+              </button>
             </div>
           )}
         </div>

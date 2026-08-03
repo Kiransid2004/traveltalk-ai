@@ -1,6 +1,7 @@
 export interface TranslateResponse {
   source_language: string;
   transcription?: string;
+  extracted_text?: string;
   translation: string;
   audio_base64: string;
 }
@@ -70,6 +71,26 @@ export async function speakText(
   if (!res.ok) {
     const err = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(err.detail || "TTS failed");
+  }
+  return res.json();
+}
+
+export async function translateImage(
+  imageBlob: Blob,
+  targetLanguage: string
+): Promise<TranslateResponse> {
+  const form = new FormData();
+  form.append("image", imageBlob, "image.jpg");
+  form.append("target_language", targetLanguage);
+
+  const res = await fetch(`${API_BASE}/translate/image`, {
+    method: "POST",
+    body: form,
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(err.detail || "Image translation failed");
   }
   return res.json();
 }
