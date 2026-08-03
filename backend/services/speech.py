@@ -9,7 +9,7 @@ _model = None
 def get_model() -> WhisperModel:
     global _model
     if _model is None:
-        _model = WhisperModel("tiny", device="cpu", compute_type="int8")
+        _model = WhisperModel("base", device="cpu", compute_type="int8")
     return _model
 
 
@@ -27,7 +27,13 @@ def transcribe(audio_bytes: bytes) -> tuple[str, str]:
         tmp_path = f.name
 
     try:
-        segments, info = model.transcribe(tmp_path, beam_size=1, vad_filter=True)
+        segments, info = model.transcribe(
+            tmp_path, 
+            beam_size=5, 
+            vad_filter=True,
+            vad_parameters=dict(min_silence_duration_ms=500),
+            condition_on_previous_text=False
+        )
         text = " ".join(seg.text for seg in segments).strip()
         lang = info.language or "und"
         if not text:

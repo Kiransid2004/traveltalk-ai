@@ -51,7 +51,7 @@ async def translate_endpoint(
     # Translate
     try:
         translated = await asyncio.to_thread(
-            translation.translate, input_text, target_language, source_lang
+            translation.translate, input_text, target_language, "auto"
         )
     except ValueError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
